@@ -8,11 +8,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Find and Extract ZIP
         run: |
+          echo "Searching for ZIP file..."
+
           ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
@@ -25,18 +27,28 @@ jobs:
           mkdir -p extracted
           unzip -q "$ZIP_FILE" -d extracted
 
+          echo "ZIP extracted successfully."
+
       - name: Find Android Project
         run: |
-          PROJECT_DIR=$(find extracted -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1)
+          echo "Searching for Android Gradle project..."
 
-          if [ -z "$PROJECT_DIR" ]; then
+          SETTINGS_FILE=$(find extracted \
+            -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            | head -n 1)
+
+          if [ -z "$SETTINGS_FILE" ]; then
             echo "ERROR: Android Gradle project not found!"
+            echo "Files inside extracted folder:"
+            find extracted -maxdepth 4 -type f | head -100
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$PROJECT_DIR")
+          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
 
-          echo "Project found at: $PROJECT_DIR"
+          echo "Android project found:"
+          echo "$PROJECT_DIR"
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Setup Java 17
@@ -45,6 +57,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -52,16 +67,19 @@ jobs:
 
       - name: Build APK
         run: |
+          echo "Building APK..."
           cd "$PROJECT_DIR"
+
           gradle assembleDebug --stacktrace
 
       - name: Find APK
         run: |
+          echo "Searching for generated APK..."
           find "$PROJECT_DIR" -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PlayItClone-APK
+          name: PlayItClone-buildfix-APK
           path: "**/build/outputs/apk/**/*.apk"
           if-no-files-found: error
